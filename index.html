@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="de" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Pro Gym Tracker v9.5 - Fullstack Edition</title>
+    
+    <link rel="manifest" href="manifest.json">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#00e5ff">
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        dark: { bg: '#09090b', card: '#18181b', border: '#27272a' },
+                        accent: { DEFAULT: '#00e5ff', hover: '#00cc6a' },
+                        primary: { DEFAULT: '#a855f7' }
+                    },
+                    borderRadius: { 'xl': '12px' }
+                }
+            }
+        }
+    </script>
+    
+    <style type="text/tailwindcss">
+        @layer components {
+            .input-field { @apply w-full bg-dark-bg border border-dark-border rounded-lg text-white p-4 text-xl text-center outline-none transition focus:border-accent; }
+            .rpe-btn { @apply flex-1 p-3 bg-dark-bg border border-dark-border rounded-lg text-white cursor-pointer text-lg text-center transition; }
+            .rpe-btn.active { @apply bg-accent text-black font-bold border-accent; }
+            .btn-primary { @apply w-full p-4 bg-accent text-black rounded-xl font-bold text-lg transition hover:bg-accent-hover hover:-translate-y-0.5 active:translate-y-0.5 shadow-[0_0_15px_rgba(0,229,255,0.2)]; }
+            .btn-outline { @apply w-full p-4 bg-transparent border border-dark-border text-white rounded-xl font-bold text-lg transition hover:border-accent hover:text-accent; }
+            .btn-ghost { @apply w-full p-3 bg-transparent text-slate-400 rounded-xl font-bold text-sm transition hover:text-white hover:bg-slate-800; }
+            .btn-danger { @apply w-full p-4 bg-transparent border border-red-900 text-red-500 rounded-xl font-bold text-lg mt-3 transition hover:bg-red-950; }
+            .stat-value { @apply text-2xl font-bold text-accent; }
+            .stat-label { @apply text-xs text-slate-500 uppercase mt-1 tracking-wider; }
+            .tab-btn { @apply flex-1 py-3 text-sm font-bold rounded-lg border border-dark-border text-slate-400 transition bg-dark-bg; }
+            .tab-btn.active { @apply bg-accent text-black border-accent shadow-[0_0_10px_rgba(0,229,255,0.3)]; }
+        }
+        .view { display: none; }
+        .view.active { display: block; animation: fadeIn 0.3s ease-out forwards; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: #09090b; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #27272a; border-radius: 10px; }
+    </style>
+</head>
+<body class="bg-dark-bg text-white antialiased flex justify-center min-h-screen p-5 pb-20">
+
+<div id="app" class="w-full max-w-[420px] relative">
+
+    <div id="view-dashboard" class="view active space-y-6">
+        <header class="text-center">
+            <h1 class="text-3xl font-extrabold text-accent">Pro Gym Tracker</h1>
+            <p class="text-slate-400 mt-1">Fullstack Edition v9.5</p>
+        </header>
+        
+        <section class="bg-dark-card border border-dark-border rounded-xl p-5 shadow-lg">
+            <h2 class="text-xl font-bold text-white mb-4">Körperdaten Trends</h2>
+            <div class="relative h-[180px] w-full mb-4"><canvas id="body-chart"></canvas></div>
+            <div class="flex gap-3 mb-3">
+                <input type="number" id="input-body-weight" placeholder="Gewicht (kg)" step="0.1" class="input-field text-base p-3">
+                <input type="number" id="input-body-waist" placeholder="Bauch (cm)" step="0.1" class="input-field text-base p-3">
+            </div>
+            <button class="btn-outline text-base p-3" onclick="app.saveBodyData()">Datenpunkt speichern</button>
+        </section>
+
+        <button class="btn-outline border-accent text-accent w-full flex justify-center items-center gap-2" onclick="app.openAnalytics()">
+            📊 Deep Analytics (Tabs & Graphen)
+        </button>
+
+        <section class="bg-dark-card border border-dark-border rounded-xl p-5 shadow-lg space-y-3">
+            <h2 class="text-xl font-bold text-white mb-1">Workout starten</h2>
+            <button class="btn-primary" onclick="app.initWarmup('A')">🅰️ Workout A (Brust/Schulter)</button>
+            <button class="btn-primary" onclick="app.initWarmup('B')">🅱️ Workout B (Rücken/Bizeps)</button>
+            <button class="btn-outline" style="border-color: #a855f7; color: #d8b4fe;" onclick="app.initWarmup('Legs')">🦵 Bein-Upgrade</button>
+        </section>
+    </div>
+
+    <div id="view-analytics" class="view space-y-6">
+        <header class="text-center">
+            <h1 class="text-3xl font-extrabold text-accent">Analytics</h1>
+            <p class="text-slate-400 mt-1">Cloud-Daten aus MongoDB</p>
+        </header>
+
+        <div class="flex gap-2 mb-6">
+            <button id="tab-btn-A" class="tab-btn active" onclick="app.renderAnalyticsTab('A')">Brust/Schulter</button>
+            <button id="tab-btn-B" class="tab-btn" onclick="app.renderAnalyticsTab('B')">Rücken</button>
+            <button id="tab-btn-Legs" class="tab-btn" onclick="app.renderAnalyticsTab('Legs')">Beine</button>
+        </div>
+
+        <div id="analytics-content" class="space-y-6"></div>
+        <button class="btn-primary sticky bottom-5" onclick="app.goHome()">Zurück zum Dashboard</button>
+    </div>
+
+    <div id="view-warmup" class="view space-y-6">
+        <header class="text-center"><h1 class="text-3xl font-extrabold text-accent">Warm-Up! 🔥</h1></header>
+        <div class="bg-dark-card border border-dark-border rounded-xl p-6 shadow-xl text-center">
+            <div class="text-6xl mb-4">🏃‍♂️</div>
+            <h2 class="text-xl font-bold text-white mb-2">Ab aufs Laufband</h2>
+            <div class="bg-dark-bg p-4 rounded-lg border border-dark-border text-left space-y-2 mb-6">
+                <p class="text-accent font-bold">⏱️ Dauer: <span class="text-white font-normal">10 Minuten</span></p>
+                <p class="text-accent font-bold">⛰️ Steigung: <span class="text-white font-normal">15 %</span></p>
+                <p class="text-accent font-bold">⚡ Speed: <span class="text-white font-normal">5 km/h</span></p>
+            </div>
+            <button class="btn-primary" onclick="app.startWorkout()">Aufgewärmt! Let's Go 🚀</button>
+            <button class="btn-ghost mt-3" onclick="app.goHome()">Abbrechen</button>
+        </div>
+    </div>
+
+    <div id="view-workout" class="view space-y-5">
+        <div class="bg-dark-card border border-dark-border rounded-xl p-6 shadow-xl" id="exercise-card">
+            <header class="text-center mb-5">
+                <h1 id="ui-ex-name" class="text-2xl font-bold text-accent mb-1">Übung</h1>
+                <p id="ui-ex-focus" class="text-sm text-slate-400">Fokus</p>
+            </header>
+
+            <div class="grid grid-cols-2 gap-3 mb-6">
+                <div class="bg-dark-bg p-4 rounded-lg border border-dark-border text-center">
+                    <div class="stat-value" id="ui-set">1 / 3</div>
+                    <div class="stat-label text-accent">Satz</div>
+                </div>
+                <div class="bg-dark-bg p-4 rounded-lg border border-dark-border text-center">
+                    <div class="stat-value text-white" id="ui-target">8-10</div>
+                    <div class="stat-label">Ziel Wdh.</div>
+                </div>
+            </div>
+
+            <div id="input-section" class="space-y-4">
+                <div class="flex gap-4">
+                    <div class="flex-1">
+                        <label class="text-xs text-slate-500 mb-1.5 block">Gewicht (kg)</label>
+                        <input type="number" id="input-weight" inputmode="decimal" placeholder="0" step="0.5" class="input-field">
+                    </div>
+                    <div class="flex-1">
+                        <label class="text-xs text-slate-500 mb-1.5 block">Wdh.</label>
+                        <input type="number" id="input-reps" inputmode="numeric" placeholder="0" class="input-field">
+                    </div>
+                </div>
+                
+                <div>
+                    <label class="text-xs text-slate-500 mb-2 block">RPE</label>
+                    <div class="flex gap-1.5" id="rpe-selectors">
+                        <div class="rpe-btn" data-rpe="7">7</div>
+                        <div class="rpe-btn active" data-rpe="8">8</div>
+                        <div class="rpe-btn" data-rpe="9">9</div>
+                        <div class="rpe-btn" data-rpe="10">10</div>
+                    </div>
+                </div>
+
+                <div class="pt-2">
+                    <button class="btn-primary" onclick="app.saveSet()">Satz speichern</button>
+                    <button class="btn-ghost mt-2" onclick="app.skipSet()">Satz überspringen</button>
+                </div>
+
+                <div class="mt-6 pt-5 border-t border-dark-border">
+                    <h3 class="text-sm font-bold text-white mb-3 flex items-center gap-2">📊 Historie Satz <span id="ui-history-set-num" class="text-accent">1</span></h3>
+                    <div class="bg-dark-bg border border-dark-border rounded-lg p-3 mb-4">
+                        <ul id="ui-history-list" class="text-sm space-y-2 max-h-32 overflow-y-auto custom-scrollbar"></ul>
+                    </div>
+                    <div class="relative h-[120px] w-full"><canvas id="set-chart"></canvas></div>
+                </div>
+            </div>
+
+            <div id="timer-section" class="text-center py-6 hidden">
+                <div id="ui-timer" class="text-8xl font-black text-accent my-2 tabular-nums">90</div>
+                <div class="w-full h-2 bg-dark-border rounded-full overflow-hidden mb-6">
+                    <div id="ui-progress" class="h-full bg-accent w-full transition-all duration-1000"></div>
+                </div>
+                <button class="btn-outline" onclick="app.skipTimer()">Überspringen</button>
+            </div>
+        </div>
+        <button class="btn-danger" onclick="app.abortWorkout()">Abbrechen</button>
+    </div>
+
+    <div id="view-summary" class="view space-y-6">
+        <header class="text-center">
+            <h1 class="text-3xl font-extrabold text-accent">Beendet!</h1>
+            <p class="text-slate-400">Speichern in die Cloud...</p>
+        </header>
+        <div class="bg-dark-card border border-dark-border rounded-xl p-6 shadow-xl">
+            <div class="grid grid-cols-2 gap-3 mb-6">
+                <div class="bg-dark-bg p-4 rounded-lg border border-dark-border text-center">
+                    <div class="stat-value" id="ui-summary-tonnage">0 kg</div>
+                    <div class="stat-label">Volumen</div>
+                </div>
+                <div class="bg-dark-bg p-4 rounded-lg border border-dark-border text-center">
+                    <div class="stat-value" id="ui-summary-avg-rpe">0</div>
+                    <div class="stat-label">Ø RPE</div>
+                </div>
+            </div>
+            <button class="btn-primary mt-4" onclick="app.finishAndSave()">In MongoDB speichern ✅</button>
+        </div>
+    </div>
+</div>
+
+<script>
+const API_URL = 'https://gym-backend-qgbf.onrender.com/api'; // <--- HIER DEINE BACKEND URL ANPASSEN
+
+const DB_SCHEMA = {
+    A: [ { id: "a1", name: "Schulterpresse", sets: 3, reps: "8-10", rest: 90 }, { id: "a2", name: "Kabel Brust Low", sets: 3, reps: "10-12", rest: 90 }, { id: "a3", name: "Kabel Brust High", sets: 3, reps: "10-12", rest: 90 }, { id: "a4", name: "Seitheben Kabel", sets: 3, reps: "12-15", rest: 60 }, { id: "a5", name: "Trizeps Kabel", sets: 3, reps: "10-12", rest: 60 } ],
+    B: [ { id: "b1", name: "Face Pulls", sets: 3, reps: "12-15", rest: 60 }, { id: "b2", name: "Rudern eng", sets: 3, reps: "8-10", rest: 90 }, { id: "b3", name: "Latzug breit", sets: 3, reps: "8-10", rest: 90 }, { id: "b4", name: "Bizepscurls", sets: 3, reps: "10-12", rest: 60 } ],
+    Legs: [ { id: "l1", name: "Beinpresse", sets: 3, reps: "8-10", rest: 120 }, { id: "l2", name: "Beinbeuger", sets: 3, reps: "10-12", rest: 90 }, { id: "l3", name: "Wadenheben", sets: 3, reps: "15-20", rest: 60 } ]
+};
+
+const app = {
+    state: { planId: null, plan: [], currentExIdx: 0, currentSet: 1, logs: [], selectedRPE: 8, tonnage: 0, timerInt: null, timeLeft: 0, totalRest: 0 },
+    analyticsCharts: [],
+
+    async init() {
+        this.renderBodyChart();
+        document.getElementById('rpe-selectors').addEventListener('click', (e) => {
+            const btn = e.target.closest('.rpe-btn');
+            if (btn) {
+                document.querySelectorAll('.rpe-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                this.state.selectedRPE = parseInt(btn.dataset.rpe);
+            }
+        });
+        
+        // PWA Service Worker
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('./sw.js').catch(() => {});
+        }
+    },
+
+    switchView(viewId) {
+        document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+        document.getElementById(viewId).classList.add('active');
+    },
+
+    initWarmup(id) { this.state.planId = id; this.switchView('view-warmup'); },
+
+    startWorkout() {
+        this.state = { ...this.state, plan: DB_SCHEMA[this.state.planId], currentExIdx: 0, currentSet: 1, logs: [], tonnage: 0 };
+        this.switchView('view-workout');
+        this.renderExercise();
+    },
+
+    async renderExercise() {
+        if (this.state.currentExIdx >= this.state.plan.length) { this.showSummary(); return; }
+        const ex = this.state.plan[this.state.currentExIdx];
+        
+        document.getElementById('ui-ex-name').innerText = ex.name;
+        document.getElementById('ui-set').innerText = `${this.state.currentSet} / ${ex.sets}`;
+        document.getElementById('ui-target').innerText = ex.reps;
+        document.getElementById('ui-history-set-num').innerText = this.state.currentSet;
+        
+        document.querySelectorAll('#input-weight, #input-reps').forEach(i => i.value = '');
+        document.getElementById('timer-section').classList.add('hidden');
+        document.getElementById('input-section').classList.remove('hidden');
+        
+        await this.loadHistoryForCurrentSet(ex.id, this.state.currentSet);
+        setTimeout(() => document.getElementById('input-weight').focus(), 100);
+    },
+
+    async loadHistoryForCurrentSet(exId, setNum) {
+        let history = [];
+        try {
+            const res = await fetch(`${API_URL}/workouts`);
+            history = await res.json();
+        } catch (e) { console.error("Cloud Offline"); }
+
+        let setLogs = [];
+        history.forEach(session => {
+            const match = session.logs.find(l => l.exId === exId && l.set === setNum);
+            if(match) setLogs.push({ date: new Date(session.date).toLocaleDateString('de-DE'), weight: match.weight, reps: match.reps, rpe: match.rpe });
+        });
+
+        const listEl = document.getElementById('ui-history-list');
+        listEl.innerHTML = '';
+        if(setLogs.length === 0) {
+            listEl.innerHTML = '<li class="text-slate-500 text-center py-2">Keine Daten.</li>';
+        } else {
+            [...setLogs].reverse().forEach(log => {
+                listEl.innerHTML += `<li class="flex justify-between border-b border-dark-border pb-1"><span>${log.date}</span><span class="text-accent font-bold">${log.weight}kg x ${log.reps}</span><span>RPE ${log.rpe}</span></li>`;
+            });
+            document.getElementById('input-weight').placeholder = setLogs[setLogs.length - 1].weight;
+        }
+
+        const ctx = document.getElementById('set-chart').getContext('2d');
+        if(window.setChart) window.setChart.destroy();
+        window.setChart = new Chart(ctx, {
+            type: 'line',
+            data: { labels: setLogs.length>0 ? setLogs.map(l=>l.date) : ['Heute'], datasets: [{ label: 'kg', data: setLogs.length>0 ? setLogs.map(l=>l.weight) : [0], borderColor: '#a855f7', fill: false, tension: 0.3 }] },
+            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { grid: {color:'#27272a'} }, x: { grid: {display:false} } } }
+        });
+    },
+
+    saveSet() {
+        const w = document.getElementById('input-weight').value, r = document.getElementById('input-reps').value;
+        if (!w || !r) return; 
+        const ex = this.state.plan[this.state.currentExIdx], vol = parseFloat(w) * parseInt(r);
+        this.state.tonnage += vol;
+        this.state.logs.push({ exId: ex.id, exerciseName: ex.name, set: this.state.currentSet, weight: parseFloat(w), reps: parseInt(r), rpe: this.state.selectedRPE, volume: vol });
+        this.startTimer(ex.rest);
+    },
+
+    skipSet() { 
+        const ex = this.state.plan[this.state.currentExIdx]; 
+        if (this.state.currentSet < ex.sets) { this.state.currentSet++; this.renderExercise(); } 
+        else { this.state.currentSet = 1; this.state.currentExIdx++; this.renderExercise(); } 
+    },
+
+    startTimer(seconds) {
+        document.getElementById('input-section').classList.add('hidden'); document.getElementById('timer-section').classList.remove('hidden');
+        this.state.totalRest = seconds; this.state.timeLeft = seconds;
+        this.state.timerInt = setInterval(() => { this.state.timeLeft--; this.updateTimerUI(); if (this.state.timeLeft <= 0) this.skipTimer(); }, 1000);
+    },
+
+    updateTimerUI() { 
+        document.getElementById('ui-timer').innerText = this.state.timeLeft; 
+        document.getElementById('ui-progress').style.width = `${(this.state.timeLeft / this.state.totalRest) * 100}%`; 
+    },
+
+    skipTimer() { clearInterval(this.state.timerInt); this.skipSet(); },
+
+    showSummary() {
+        const avgRpe = this.state.logs.length > 0 ? (this.state.logs.reduce((s, satz) => s + satz.rpe, 0) / this.state.logs.length).toFixed(1) : 0;
+        document.getElementById('ui-summary-tonnage').innerText = `${this.state.tonnage.toFixed(0)} kg`;
+        document.getElementById('ui-summary-avg-rpe').innerText = avgRpe;
+        this.switchView('view-summary');
+    },
+
+    async finishAndSave() {
+        const payload = { planId: this.state.planId, totalVolume: this.state.tonnage, logs: this.state.logs };
+        try {
+            await fetch(`${API_URL}/workouts`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+        } catch (e) { alert("Server nicht erreichbar!"); }
+        this.goHome();
+    },
+
+    async openAnalytics() {
+        this.switchView('view-analytics');
+        await this.renderAnalyticsTab('A');
+    },
+
+    async renderAnalyticsTab(planId) {
+        document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+        document.getElementById(`tab-btn-${planId}`).classList.add('active');
+        this.analyticsCharts.forEach(c => c.destroy());
+        this.analyticsCharts = [];
+
+        let history = [];
+        try {
+            const res = await fetch(`${API_URL}/workouts`);
+            history = await res.json();
+        } catch (e) {}
+
+        const tabHistory = history.filter(h => h.planId === planId).sort((a,b) => new Date(a.date) - new Date(b.date));
+        const container = document.getElementById('analytics-content');
+        container.innerHTML = '';
+
+        if (tabHistory.length === 0) {
+            container.innerHTML = '<p class="text-center py-10">Keine Daten in MongoDB gefunden.</p>';
+            return;
+        }
+
+        DB_SCHEMA[planId].forEach((ex) => {
+            let chartLabels = [], chartData = [], tableRowsHTML = '';
+            [...tabHistory].reverse().forEach(session => {
+                const exLogs = session.logs.filter(l => l.exId === ex.id);
+                if (exLogs.length > 0) {
+                    const dateStr = new Date(session.date).toLocaleDateString('de-DE');
+                    const setsHtml = exLogs.map(l => `<span class="bg-dark-bg p-1 rounded text-xs border border-dark-border">${l.weight}kg x ${l.reps}</span>`).join(' ');
+                    tableRowsHTML += `<div class="py-2 border-b border-dark-border"><p class="text-accent text-xs">${dateStr}</p><div class="flex flex-wrap gap-1 mt-1">${setsHtml}</div></div>`;
+                    chartLabels.push(dateStr); chartData.push(Math.max(...exLogs.map(l => l.weight)));
+                }
+            });
+
+            if (chartData.length > 0) {
+                const canvasId = `chart-${ex.id}`;
+                container.innerHTML += `<div class="bg-dark-card border border-dark-border rounded-xl p-4"><h3>${ex.name}</h3><div class="h-32 w-full my-4"><canvas id="${canvasId}"></canvas></div><div class="max-h-32 overflow-y-auto">${tableRowsHTML}</div></div>`;
+                setTimeout(() => {
+                    const ctx = document.getElementById(canvasId).getContext('2d');
+                    this.analyticsCharts.push(new Chart(ctx, {
+                        type: 'line',
+                        data: { labels: chartLabels.reverse(), datasets: [{ label: 'kg', data: chartData.reverse(), borderColor: '#00e5ff', fill: false }] },
+                        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+                    }));
+                }, 0);
+            }
+        });
+    },
+
+    goHome() { this.switchView('view-dashboard'); this.renderBodyChart(); },
+
+    async saveBodyData() {
+        const w = document.getElementById('input-body-weight').value, waist = document.getElementById('input-body-waist').value;
+        if (!w || !waist) return;
+        try {
+            await fetch(`${API_URL}/stats`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ weight: parseFloat(w), waist: parseFloat(waist) })
+            });
+            this.renderBodyChart();
+        } catch (e) {}
+    },
+
+    async renderBodyChart() {
+        let history = [];
+        try {
+            const res = await fetch(`${API_URL}/stats`);
+            history = await res.json();
+        } catch (e) {}
+        
+        const ctx = document.getElementById('body-chart').getContext('2d');
+        if(window.bodyChart) window.bodyChart.destroy();
+        window.bodyChart = new Chart(ctx, {
+            type: 'line',
+            data: { 
+                labels: history.map(d=>new Date(d.date).toLocaleDateString('de-DE')), 
+                datasets: [ 
+                    { label: 'kg', data: history.map(d=>d.weight), borderColor: '#00e5ff', tension: 0.3 }, 
+                    { label: 'cm', data: history.map(d=>d.waist), borderColor: '#94a3b8', yAxisID: 'yWaist' } 
+                ] 
+            },
+            options: { responsive: true, maintainAspectRatio: false, scales: { yWaist: { position: 'right' } }, plugins: { legend: { display: false } } }
+        });
+    }
+};
+
+app.init();
+</script>
+</body>
+</html>
